@@ -111,7 +111,7 @@ comment lines (starting with `#`) are ignored.
 Any `SBATCH_OPTS` are passed on to `sbatch` (but could better be specified
 through `#SBATCH` directives in `JOB_FILE`).
 
-#### Examples
+#### Example: single command-line
 
 This gzips (in parallel jobs across the cluster) all files in PWD:
 
@@ -124,6 +124,8 @@ and of course we might also want to prevent double-zipping:
 
 But will still fail if PWD contains a directory (exercise for the reader).
 
+#### Example: list file and job file
+
 A more elaborate example: let's batch SKESA over a collection of reads,
 listed (with their isolate ID) in file `reads.lst`:
 
@@ -134,8 +136,8 @@ listed (with their isolate ID) in file `reads.lst`:
     sample2.fna  /path/to/reads2_R1.fq  /path/to/reads2_R2.fq
     ...
 
-Here it makes sense to write a (reusable) job script first that assembles
-a single read pair:
+Here it makes sense to first write a job script that assembles a single
+read pair:
 
     File: skesa.job  (error handling omitted)
     ------------------------------------------------------------------
@@ -149,15 +151,45 @@ a single read pair:
     skesa --cores 8 --memory 32 --reads "$R1,$R2" --contigs_out "$FNA"
     ------------------------------------------------------------------
 
-Then we can optionally test `skesa.job` outside of Slurm:
+We can test this either outside of Slurm by running it directly:
 
+    chmod +x skesa.job
     ./skesa.job sample1 /path/to/R1.fq /path/to/R2.fq
 
-and with Slurm using `sbatch`:
+or submit it as a Slurm job with `sbatch`:
 
     sbatch skesa.job sample1 /path/to/R1.fq /path/to/R2.fq
 
-If all works well, we are ready to let `sbatch-list` run the array:
+And if all works well, let `sbatch-list` run it over the list:
 
     sbatch-list reads.lst skesa.job
+
+##### Note: output handling
+
+@TODO@: options `-o` and `-e`, and using `SBATCH_OPTS` to override
+
+##### Note: improving the job file
+
+The `skesa.job` above can be improved in several ways:
+
+ * Provide `-h/--help`
+ * Hardened bash: `export LC_ALL="C"; set -euo pipefail`
+ * Check that inputs exist, else error out
+ * Check that output does not exist, or:
+   * Overwrite iff output is older than inputs, or
+   * Add a `-f/--force` parameter, or
+   * ...
+ * Replace hardcoded params by `SLURM_*` variables
+   * But remember that no bash commands (not even variable assignments)
+   can come before the `#SBATCH` directives
+
+
+### sbatch-tsv
+
+**Work in Progress**
+
+The `sbatch-tsv` script is like `sbatch-list` but parses the inputs for
+the array jobs from a TSV file, and makes them available to the script
+through environment variables.
+
 
