@@ -6,7 +6,7 @@ lives easier.
 
 ## Background
 
-Slurm lacks native support for some "higher level" functions that are
+Slurm lacks native support for some higher level functions that are
 daily chores for bioinformaticians:
 
  * Iterate a batch job over a collection of inputs (e.g. fasta files)
@@ -19,7 +19,7 @@ be convenient.  This repository aims to fulfil these three goals.
 
 Basic support for batching is present in Slurm: `sbatch --array` creates
 a batch of parallel jobs with identical requirements.  However, it is not
-as trivially usable as:
+as trivially usable as these HTCondor examples:
 
     # Create array of jobs, one per matching file $F
     queue [a job for each] F matching /path/to/*.fasta
@@ -35,7 +35,7 @@ The `--dependency` option for jobs in Slurm provides a basis for building
 workflows, by enabling jobs to wait for completion statuses of other jobs
 (including array jobs, using the `aftercorr` condition).
 
-However, it is far from simple a high-level specification, like:
+However, it is far from a simple high-level specification, like:
 
     # Define a miniature "diamond-shaped" workflow (HTCondor DAG)
     PARENT jobA       CHILD jobB jobC
@@ -44,13 +44,15 @@ However, it is far from simple a high-level specification, like:
 Dedicated workflow engines such as NextFlow may be the best option here,
 to the extent that they interoperate with Slurm.
 
-> [Here](https://groups.google.com/g/slurm-users/c/7ySh6mJt9so) it is
-> pointed out that NextFlow (in 2023) did not yet support Slurm arrays.
+> It is pointed out [here](https://groups.google.com/g/slurm-users/c/7ySh6mJt9so)
+> that NextFlow (in 2023) did not (yet) support Slurm arrays.
 >
 > The [MyQueue](https://myqueue.readthedocs.io/en/latest/) front-end
 > linked from that page offers workflow support, albeit using Python.
 >
-> **TODO** investigate these and other options for workflow support.
+> **TODO** investigate these and other options for workflow support
+> (which is not quite as trivial as batch support: partial success,
+> resuming runs, etc.)
 
 #### Job Library
 
@@ -61,27 +63,26 @@ An elegant feature of Slurm is that job files are plain shell scripts,
 which can (using `#SBATCH` directives) be annotated with their resource
 requirements.
 
-Running e.g. a SKESA assembly can then be made as simple as:
+Once you have the job file, running e.g. a SKESA assembly can be simply:
 
     sbatch lib/jobs/skesa.job read1.fq read2.fq mysample.fna
 
 ... with parameter settings, input checks, usage information _and_ Slurm
-resource requests all preset in the job file.
+resource requests all captured as "presets" in the job file.
 
-If written properly, the job files (being shell scripts) can be fully
-self-contained:
+If written properly, job files (being shell scripts) can be self-contained:
 
     $ lib/jobs/skesa.job --help
     Usage: ... READS1 READS2 OUT_DIR
     ...
 
-And finally, the job files can be used as-is by `sbatch-list` (below) to
+And finally, such job files can be used as-is by `sbatch-list` (below) to
 process a batch of inputs:
 
     sbatch-list inputs.lst lib/jobs/skesa.job
 
-We may choose to move some typical boilerplate to a central library,
-though in principle job files should be maximally 'decoupled'.
+> We may choose to move some typical boilerplate to a central function
+> library, though in principle job files should best be 'decoupled'.
 
 #### Container support
 
