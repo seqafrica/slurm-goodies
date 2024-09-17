@@ -6,55 +6,65 @@ lives easier.
 
 ## Background
 
-Slurm lacks native support for some higher level functions that are
-daily chores for bioinformaticians:
+Slurm lacks native support for higher level functions that are daily
+chores for bioinformaticians:
 
  * Iterate a batch job over a collection of inputs (e.g. fasta files)
  * Run a workflow of dependent jobs (and do this across a batch)
+ * Maintain a library of jobs and workflows for common tasks
 
-Additionally, having a library of "pre-fab" jobs for common tasks would
-be convenient.  This repository aims to fulfil these three goals.
+This repository aims to partially fill these gaps, either with tooling
+or pointers to documentation.
 
-#### Batch support
+### Batch support
 
-Basic support for batching is present in Slurm: `sbatch --array` creates
-a batch of parallel jobs with identical requirements.  However, it is not
-as trivially usable as these HTCondor examples:
+Slurm has basic support for batching: `sbatch --array` creates an array
+of parallel jobs with identical requirements.  However, this is not as
+trivially usable as these HTCondor examples:
 
     # Create array of jobs, one per matching file $F
-    queue [a job for each] F matching /path/to/*.fasta
+    queue [this job for each] F matching /path/to/*.fasta
 
     # Create array of jobs that take params IN, OUT from a TSV file
-    queue [a job for each] IN,OUT from table.tsv
+    queue [this job for each] IN, OUT from table.tsv
 
-The `sbatch-list` script in this repo intends to fill this gap.
+The `sbatch-list` script in this repo intends to fill part of this gap.
 
-#### Workflow support
+### Workflow support
 
-The `--dependency` option for jobs in Slurm provides a basis for building
-workflows, by enabling jobs to wait for completion statuses of other jobs
-(including array jobs, using the `aftercorr` condition).
+Slurm has rudimentary workflow support: the `--dependency` option enables
+jobs to wait for completion statuses of other jobs (including array jobs,
+using the `aftercorr` condition).
 
-However, it is far from a simple high-level specification, like:
+However, this is nowhere near the functionality offered by e.g. HTCondor
+DAGs or standalone workflow engines such as NextFlow or Cromwell.  For
+instance, this specification:
 
-    # Define a miniature "diamond-shaped" workflow (HTCondor DAG)
+    # Define a miniature "diamond-shaped" workflow
     PARENT jobA       CHILD jobB jobC
     PARENT jobB jobC  CHILD jobD
 
-Dedicated workflow engines such as NextFlow may be the best option here,
-to the extent that they interoperate with Slurm.
+... integrates 4 jobs (of which 2 can run in parallel) in a workflow that
+is directly executable on HTCondor, and can be managed like any other job:
+suspend, abort, recover from error, etc.
 
-> It is pointed out [here](https://groups.google.com/g/slurm-users/c/7ySh6mJt9so)
-> that NextFlow (in 2023) did not (yet) support Slurm arrays.
->
-> The [MyQueue](https://myqueue.readthedocs.io/en/latest/) front-end
-> linked from that page offers workflow support, albeit using Python.
->
-> **TODO** investigate these and other options for workflow support
-> (which is not quite as trivial as batch support: partial success,
-> resuming runs, etc.)
+The best option on Slurm is probably having a dedicated workflow engine,
+and preferably one that integrates well.
 
-#### Job Library
+It is pointed out [here](https://groups.google.com/g/slurm-users/c/7ySh6mJt9so)
+that NextFlow (in 2023) did not (yet) support Slurm arrays.
+
+The [MyQueue](https://myqueue.readthedocs.io/en/latest/) front-end
+linked from that page offers workflow support, albeit using Python.
+
+> I'm curious if NextFlow and Slurm can ever integrate well: a _workload_
+> manager and a _workflow_ manager running a ship together?  So who is in
+> charge of what happens when?  Who manages batches?  Who handles failure
+> recovery?
+
+**TODO** investigate these and other options for workflow support
+
+### Job Library
 
 The `lib/jobs` directory is intended as a repository of reusable
 bioinformatics jobs.
@@ -84,11 +94,11 @@ process a batch of inputs:
 > We may choose to move some typical boilerplate to a central function
 > library, though in principle job files should best be 'decoupled'.
 
-#### Container support
+#### Note: container support
 
 **TODO** investigate Slurm's support for running OCI containers (Docker,
-Singularity).  For now we run these as we would normally (`docker run ..`)
-with the permissions issues this entails.
+Singularity, LXC, ...).  For now we run these as we would otherwise,
+from a script that invokes `docker run ..`.  Permission issues may occur.
 
 
 ## Usage
@@ -170,18 +180,8 @@ And if all works well, let `sbatch-list` run it over the list:
 
 ##### Note: improving the job file
 
-The `skesa.job` above can be improved in several ways:
-
- * Provide `-h/--help`
- * Hardened bash: `export LC_ALL="C"; set -euo pipefail`
- * Check that inputs exist, else error out
- * Check that output does not exist, or:
-   * Overwrite iff output is older than inputs, or
-   * Add a `-f/--force` parameter, or
-   * ...
- * Replace hardcoded params by `SLURM_*` variables
-   * But remember that no bash commands (not even variable assignments)
-   can come before the `#SBATCH` directives
+The `skesa.job` above can be improved in several ways.  See the final
+result in the job library: [lib/jobs/skesa.job](lib/jobs/skesa.job).
 
 
 ### sbatch-tsv
@@ -193,3 +193,31 @@ the array jobs from a TSV file, and makes them available to the script
 through environment variables.
 
 
+### List of job library
+
+Currently in [lib/jobs](lib/jobs):
+
+ * [skesa.job](lib/jobs/skesa.job)
+ * **WIP** [bap.job](lib/jobs/bap.job)
+
+
+
+---
+
+### Licence
+
+sbatch-goodies - Slurm jobs and wrapper scripts for bioinformaticians  
+Copyright (C) 2024  Marco van Zwetselaar <io@zwets.it>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
