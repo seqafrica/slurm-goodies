@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-#  sbatch-list - Slurm array submission made easier
+#  sbatch-list - Slurm job array submission made easier
 #  Copyright (C) 2024  Marco van Zwetselaar <io@zwets.it>
 #
 #  This program is free software: you can redistribute it and/or modify
@@ -22,7 +22,7 @@
 export LC_ALL="C"
 set -euo pipefail
 
-PROGNAME="${0##*/}"
+declare -r PROGNAME="${0##*/}"
 
 # Boilerplate
 
@@ -30,21 +30,26 @@ err_exit() { echo "${0##*/}: $*" >&2; exit 1; }
 
 usage_exit() {
     printf '
-Usage: %s [SBATCH_OPTS] LISTFILE|"-" EXECUTABLE
+Usage: %s [SBATCH_OPTS] LISTFILE|"-" SCRIPT
+
+  Slurm job array submission made easier.
 
   Submits a Slurm job array, passing each line from LISTFILE as the command
-  line arguments to a parallel instance of EXECUTABLE.
+  line arguments to a parallel instance of SCRIPT.
+
+  SBATCH_OPTS are passed as options to sbatch(1) and override any #SBATCH
+  directives that may be set in SCRIPT.
+
+  Lookup rules for SCRIPT are the same as for sbatch.  Notably: if SCRIPT
+  has no directory path, then it PWD is searched before PATH.
 
   Empty lines and comments in LISTFILE are ignored.  LISTFILE can be "-" to
-  indicate standard input. This enables for instance:
+  indicate standard input.  This enables for instance:
   
-      ls -Q * | %s - myjob.sh   # The -Q option quotes filenames
+      ls -Q * | %s - my.job   # The -Q option quotes filenames
 
-  Lines from LISTFILE are interpreted by bash when passed as arguments to
-  EXECUTABLE, hence use quoting just like you would on a command-line.
-
-  SBATCH_OPTS are passed as options to sbatch(1).  You can also pass these
-  using "#SBATCH" directives in EXECUTABLE, as with sbatch jobs.
+  NOTE: Lines from LISTFILE are interpreted by bash when passed to SCRIPT,
+        hence need the same quoting as arguments on a command-line.
 
 ' "$PROGNAME" "$PROGNAME"
     exit ${1:-1}
@@ -53,8 +58,8 @@ Usage: %s [SBATCH_OPTS] LISTFILE|"-" EXECUTABLE
 # Parse options
 
 declare -a SBATCH_OPTS=()
-while (( $# > 2 )); do
-    case $1 in
+while (($# > 2)); do
+    case "$1" in
         -h|--help)  usage_exit 0 ;;
         *)          SBATCH_OPTS[${#SBATCH_OPTS[@]}]="$1" ;;
     esac
@@ -63,7 +68,7 @@ done
 
 # Parse arguments
 
-(( $# == 2 )) || usage_exit
+(($# == 2)) || usage_exit
 
 LISTFILE="$1"
 [[ "$LISTFILE" == '-' || -f "$LISTFILE" ]] || err_exit "no such file: $LISTFILE"
@@ -75,15 +80,15 @@ EXE="$2"
 
 # Do the work
 
-# The way we implement this all is to generate a script that we feed to sbatch,
-# in which we put:
+# The way we implement this all is to generate an ephemeral script that we
+# feed to sbatch on its stdin, in which we put:
 #
-#  - Any #SBATCH directives the user has put in EXECUTABLE (if it's a script)
+#  - Any #SBATCH directives the user has put in SCRIPT
 #  - A bash array that holds the contents of LISTFILE (yes, this may get big,
-#    but since we may be reading from stdin we need to store these somewhere,
-#    eiher in a tempfile we can't clean up, or else in the ephemeral script).
+#    but since we may be reading it from stdin we need to keep it somewhere;
+#    the unclean alternative would be a tempfile that we cannot clean up)
 #  - Code to pick the appropriate line from that array for this task
-#  - The call to EXECUTABLE with the argument line picked above
+#  - The call to SCRIPT with the argument line picked above
 #
 # Furthermore, we pass on to sbatch the SBATCH_OPTS from the command-line and
 # (obviously, as this is what this was all about) the --array specification.

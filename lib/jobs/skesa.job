@@ -1,0 +1,90 @@
+#!/bin/bash
+#
+#  skesa.job - Bash script / Slurm job to run SKESA
+#  Copyright (C) 2024  Marco van Zwetselaar <io@zwets.it>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Home: https://github.com/seqafrica/slurm-goodies
+
+# Slurm defaults: job name, 1 task, 8 cores, 32G mem, 30mn max, spread
+#SBATCH -J skesa -n 1 -c 8 --mem 32G -t 30 --spread-job
+
+# Hardened bash
+export LC_ALL="C"
+set -euo pipefail
+
+# Constants
+declare -r PROGNAME='skesa.job'
+
+# SKESA params computed from actual Slurm allocation, or default if not under Slurm
+declare -ri SKESA_CORES=${SLURM_JOB_CPUS_PER_NODE:-8}
+declare -ri SKESA_MEM_GB=$((${SLURM_MEM_PER_NODE:-$((${SLURM_MEM_PER_CPU:-4096} * THREADS))} / 1024))
+
+# Functions
+emit() { echo "$PROGNAME: $*" >&2; }
+err_exit() { echo "$PROGNAME: $*" >&2; exit 1; }
+
+# Function to exit with usage message
+usage_exit() { printf '
+Usage: %s [OPTIONS] FQ1 FQ2 FNA
+
+  Runs SKESA on reads files FQ1 and FQ2, producing assembly FNA.
+
+  OPTIONS
+   -s,--smart  Run only if FNA does not exist or is older than FQ1 or FQ2
+   -f,--force  Run SKESA regardless of whether FNA already exists
+
+  Without either option, exits with error if file FNA already exists.
+
+  Use --smart to skip running SKESA if FNA exists and is newer than FQ1
+  and FQ2.  Use --force to force SKESA to always run.
+
+' "$PROGNAME"
+  exit ${1:-1}
+}
+
+# Parse options
+declare -i SMART=0 FORCE=0
+
+OPTS=$(getopt -o hsf -l 'help,smart,force' -n "$PROGNAME" -- "$@" || usage_exit)
+eval set -- "$OPTS"
+
+while true; do
+    case "$1" in
+    -s|--s*) SMART=1 ;;
+    -f|--f*) FORCE=1 ;;
+    -h|--h*) usage_exit 0 ;;
+    --)      shift; break ;;
+    *)       usage_exit ;;
+    esac
+    shift
+done
+
+# Parse arguments
+(($# == 3)) || usage_exit
+declare -r FQ1="$1" FQ2="$2" FNA="$3"
+
+# Check files
+[[ -f "$FQ1" ]] || err_exit "no such file: $FQ1"
+[[ -f "$FQ2" ]] || err_exit "no such file: $FQ2"
+(( $SMART || $FORCE )) || [[ ! -f "$FNA" ]] || err_exit "file exists (use --force or --smart): $FNA"
+
+# Skip if --smart and FNA newer than the FQs, else pre-emptively delete the FNA
+(( $SMART )) && [[ -f "$FNA" && "$FNA" -nt "$FQ1" && "$FNA" -nt "$FQ2" ]] \
+    && emit "skipping execution, output newer than inputs: $FNA" && exit 0 \
+    || rm -f "$FNA"
+
+# Finally ... delegate to SKESA
+exec skesa --cores $SKESA_CORES --memory $SKESA_MEM_GB --reads "$FQ1,$FQ2" --contigs_out "$FNA"
