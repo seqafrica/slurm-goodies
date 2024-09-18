@@ -18,8 +18,8 @@
 #
 #  Home: https://github.com/seqafrica/slurm-goodies
 
-# Slurm defaults: job name, 1 task, 8 cores, 32G mem, 30mn max, spread
-#SBATCH -J skesa -n 1 -c 8 --mem 32G -t 30 --spread-job
+# Slurm defaults: job name, 1 task, 8 cores, 32G mem, 30mn max
+#SBATCH -J skesa -n 1 -c 8 --mem 32G -t 30
 
 # Hardened bash
 export LC_ALL="C"
@@ -30,7 +30,7 @@ declare -r PROGNAME='skesa.job'
 
 # SKESA params computed from actual Slurm allocation, or default if not under Slurm
 declare -ri SKESA_CORES=${SLURM_JOB_CPUS_PER_NODE:-8}
-declare -ri SKESA_MEM_GB=$((${SLURM_MEM_PER_NODE:-$((${SLURM_MEM_PER_CPU:-4096} * THREADS))} / 1024))
+declare -ri SKESA_MEM_GB=$((${SLURM_MEM_PER_NODE:-$((${SLURM_MEM_PER_CPU:-4096} * SKESA_CORES))} / 1024))
 
 # Functions
 emit() { echo "$PROGNAME: $*" >&2; }
@@ -43,10 +43,11 @@ Usage: %s [OPTIONS] FQ1 FQ2 FNA
   Runs SKESA on reads files FQ1 and FQ2, producing assembly FNA.
 
   OPTIONS
-   -s,--smart  Run only if FNA does not exist or is older than FQ1 or FQ2
-   -f,--force  Run SKESA regardless of whether FNA already exists
+   -s,--smart     Run only if FNA does not exist or is older than FQ1 or FQ2
+   -f,--force     Run SKESA regardless of whether FNA already exists
+   -l,--log FILE  Capture SKESA log by redirecting stderr to FILE
 
-  Without either option, exits with error if file FNA already exists.
+  Without either -s or -f, exits with error if file FNA already exists.
 
   Use --smart to skip running SKESA if FNA exists and is newer than FQ1
   and FQ2.  Use --force to force SKESA to always run.
@@ -58,13 +59,14 @@ Usage: %s [OPTIONS] FQ1 FQ2 FNA
 # Parse options
 declare -i SMART=0 FORCE=0
 
-OPTS=$(getopt -o hsf -l 'help,smart,force' -n "$PROGNAME" -- "$@" || usage_exit)
+OPTS=$(getopt -o 'hsfl:' -l 'help,smart,force,log:' -n "$PROGNAME" -- "$@" || usage_exit)
 eval set -- "$OPTS"
 
 while true; do
     case "$1" in
     -s|--s*) SMART=1 ;;
     -f|--f*) FORCE=1 ;;
+    -l|--l*) shift; exec 2>"$1" ;;
     -h|--h*) usage_exit 0 ;;
     --)      shift; break ;;
     *)       usage_exit ;;
