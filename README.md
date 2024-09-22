@@ -80,7 +80,7 @@ Once you have the job file, running e.g. a SKESA assembly can be simply:
 ... with parameter settings, input checks, usage information _and_ Slurm
 resource requests all captured as "presets" in the job file.
 
-If written properly, job files (being shell scripts) can be self-contained:
+Job files (being shell scripts) can even be run directly:
 
     $ lib/jobs/skesa.job --help
     Usage: ... READS1 READS2 OUT_DIR
@@ -103,8 +103,9 @@ from a script that invokes `docker run ..`.  Permission issues may occur.
 
 ## Usage
 
-For now we have just the `batch-list` script for "batching a job" across
-a list of inputs (such as all files in a directory).
+For now we have the `batch-list` script for "batching a job" across a list
+of inputs (such as all files in a directory), and `batch-tsv` for batching
+a job across the 'records' in a TSV file.
  
 ### sbatch-list
 
@@ -118,8 +119,8 @@ its own line from the text file as its command-line arguments:
 When `LIST_FILE` is `-`, reads the list from stdin.  Empty lines and
 comment lines (starting with `#`) are ignored.
 
-Any `SBATCH_OPTS` are passed on to `sbatch` (but could better be specified
-through `#SBATCH` directives in `JOB_FILE`).
+Any `SBATCH_OPTS` are passed on to `sbatch`, and override any `#SBATCH`
+directives in `JOB_FILE` (as with `sbatch`).
 
 #### Example: single command-line
 
@@ -127,27 +128,29 @@ This gzips (in parallel jobs across the cluster) all files in PWD:
 
     ls -Q * | sbatch-list - gzip
 
-Note the `-Q` for quoted output (to protect file names with spaces),
-and of course we might also want to prevent double-zipping:
+The `-Q` makes `ls` quote output, so file names with spaces work as well.
 
-    ls -Q * | grep -Ev '.gz"$' | sbatch-list - gzip
+If you'd want to pass additional arguments to gzip, these need to be added
+to the command-line, e.g. like this:
 
-But will still fail if PWD contains a directory (exercise for the reader).
+    ls -Q * | sed 's/^/--best /' | sbatch-list - gzip
+
+Note that it isIt is not possibly
 
 #### Example: list file and job file
 
 A more elaborate example: let's batch SKESA over a collection of reads,
-listed (with their isolate ID) in file `reads.lst`:
+listed in file `reads.lst`:
 
     File: reads.lst
     ------------------------------------------------------------------
     # isolate    # reads1               # reads2
-    sample1.fna  /path/to/reads1_R1.fq  /path/to/reads1_R2.fq
-    sample2.fna  /path/to/reads2_R1.fq  /path/to/reads2_R2.fq
+    sample1      /path/to/reads1_R1.fq  /path/to/reads1_R2.fq
+    sample2      /path/to/reads2_R1.fq  /path/to/reads2_R2.fq
     ...
 
-Here it makes sense to first write a job script that assembles a single
-read pair:
+We write a job script that calls SKESA, taking the names of the two reads
+files and the assembly on its command-line:
 
     File: skesa.job  (error handling omitted)
     ------------------------------------------------------------------
@@ -170,7 +173,7 @@ or submit it as a Slurm job with `sbatch`:
 
     sbatch skesa.job sample1 /path/to/R1.fq /path/to/R2.fq
 
-And if all works well, let `sbatch-list` run it over the list:
+And if all works well, let `sbatch-list` run it over our list:
 
     sbatch-list reads.lst skesa.job
 
