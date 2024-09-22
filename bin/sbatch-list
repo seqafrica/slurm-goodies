@@ -61,7 +61,7 @@ declare -a SBATCH_OPTS=()
 while (($# > 2)); do
     case "$1" in
         -h|--help)  usage_exit 0 ;;
-        *)          SBATCH_OPTS[${#SBATCH_OPTS[@]}]="$1" ;;
+        *)          SBATCH_OPTS+=("$1") ;;
     esac
     shift
 done
@@ -115,7 +115,7 @@ N_LINES="$(fgrep -c '' "$TMP_LIST")"
   printf ')\n'
 
   # Generate the call
-  printf 'exec bash -c "%s ${ARGS_LIST[$((SLURM_ARRAY_TASK_ID - 1))]}"\n' "$EXE" "${EXE##*/}"
+  printf 'exec bash -c "exec %s ${ARGS_LIST[$((SLURM_ARRAY_TASK_ID - 1))]}" %s\n' "$EXE" "${EXE##*/}"
 
 } | # Pipe into sbatch with user options and add array spec
 exec sbatch "${SBATCH_OPTS[@]}" --array 1-$N_LINES
