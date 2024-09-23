@@ -41,7 +41,7 @@ Usage: %s [SBATCH_OPTS] LISTFILE|"-" SCRIPT
   directives that may be set in SCRIPT.
 
   Lookup rules for SCRIPT are the same as for sbatch.  Notably: if SCRIPT
-  has no directory path, then it PWD is searched before PATH.
+  has no directory path, then PWD is searched before PATH.
 
   Empty lines and comments in LISTFILE are ignored.  LISTFILE can be "-" to
   indicate standard input.  This enables for instance:
@@ -49,7 +49,7 @@ Usage: %s [SBATCH_OPTS] LISTFILE|"-" SCRIPT
       ls -Q * | %s - my.job   # The -Q option quotes filenames
 
   NOTE: Lines from LISTFILE are interpreted by bash when passed to SCRIPT,
-        hence need the same quoting as arguments on a command-line.
+        hence the same quoting rules as for command-line arguments apply.
 
 ' "$PROGNAME" "$PROGNAME"
     exit ${1:-1}
@@ -100,7 +100,7 @@ grep -Ev '^[[:space:]]*(#|$)' "$LISTFILE" | while read -r LINE; do
 done >"$TMP_LIST"
 
 # Count the number of lines (= array size)
-N_LINES="$(fgrep -c '' "$TMP_LIST")"
+declare -ri N_LINES=$(fgrep -c '' "$TMP_LIST")
 
 # Generate the batch job and pipe it into sbatch
 {

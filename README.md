@@ -119,23 +119,24 @@ its own line from the text file as its command-line arguments:
 When `LIST_FILE` is `-`, reads the list from stdin.  Empty lines and
 comment lines (starting with `#`) are ignored.
 
-Any `SBATCH_OPTS` are passed on to `sbatch`, and override any `#SBATCH`
-directives in `JOB_FILE` (as with `sbatch`).
+Any `SBATCH_OPTS` are passed on to `sbatch`, and (as with Slurm's `sbatch`)
+override settings passed by `#SBATCH` directives in `JOB_FILE`.
 
 #### Example: single command-line
 
-This gzips (in parallel jobs across the cluster) all files in PWD:
+This gzips (in parallel jobs across the cluster) all `*.txt` files in PWD:
 
-    ls -Q * | sbatch-list - gzip
+    ls -Q *.txt | sbatch-list - gzip
 
-The `-Q` makes `ls` quote output, so file names with spaces work as well.
+The `-Q` makes `ls` quote output, so file names with spaces don't break.
 
-If you'd want to pass additional arguments to gzip, these need to be added
-to the command-line, e.g. like this:
+If you want to pass additional arguments to gzip, you'll need to insert
+these in the command-line, e.g. like this:
 
-    ls -Q * | sed 's/^/--best /' | sbatch-list - gzip
+    ls -Q *.txt | sed 's/^/--best /' | sbatch-list - gzip
 
-Note that it isIt is not possibly
+For most jobs, it will be more convenient to first create a list and a job
+file, as demonstrated in the next example.
 
 #### Example: list file and job file
 
@@ -169,22 +170,16 @@ We can test this either outside of Slurm by running it directly:
     chmod +x skesa.job
     ./skesa.job sample1 /path/to/R1.fq /path/to/R2.fq
 
-or submit it as a Slurm job with `sbatch`:
+or submit it as a single Slurm job with `sbatch`:
 
     sbatch skesa.job sample1 /path/to/R1.fq /path/to/R2.fq
 
-And if all works well, let `sbatch-list` run it over our list:
+or indeed submit a jobs for all entries in the list with `sbatch-list`:
 
     sbatch-list reads.lst skesa.job
 
-##### Note: output handling
-
-@TODO@: options `-o` and `-e`, and using `SBATCH_OPTS` to override
-
-##### Note: improving the job file
-
-The `skesa.job` above can be improved in several ways.  See the final
-result in the job library: [lib/jobs/skesa.job](lib/jobs/skesa.job).
+The `skesa.job` above has no error checking or other features.  The job
+library has a more complete example: [lib/jobs/skesa.job](lib/jobs/skesa.job).
 
 
 ### sbatch-tsv
