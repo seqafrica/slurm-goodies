@@ -26,27 +26,27 @@ declare -r PROGNAME="${0##*/}"
 
 # Boilerplate
 
-err_exit() { echo "${0##*/}: $*" >&2; exit 1; }
+err_exit() { echo "${0##*/}: error: $*" >&2; exit 1; }
 
 usage_exit() {
     printf '
 Usage: %s [SBATCH_OPTS] TSV_FILE SCRIPT
 
-  Submits a Slurm job array, running SCRIPT for each record in TSV_FILE.
+  Submit a Slurm job array that runs SCRIPT for each record in TSV_FILE.
 
-  TSV_FILE must be tab-separated and have column headers.  Each instance
-  of SCRIPT receives an environment variable X for each column header X,
-  whose value is the entry in column X in its specific row.
+  Each instance of SCRIPT receives its record from TSV_FILE as a set of
+  environment variables whose names are the column headers in TSV_FILE,
+  prefixed by an underscore.
+
+  TSV_FILE must be tab-separated and have column headers.  Empty lines
+  and lines starting with '"'"'#'"'"' are ignored.  Column headers must contain
+  only letters, digits, and underscores.  Headers are case sensitive.
 
   SBATCH_OPTS are passed as options to sbatch(1) and override any #SBATCH
   directives that may be set in SCRIPT.
 
   Lookup rules for SCRIPT are the same as for sbatch.  Notably: if SCRIPT
   has no directory path, then it PWD is searched before PATH.
-
-  Empty lines and comments in TSV_FILE are ignored.  Spaces in column
-  headers are translated to underscores.  Other characters that cannot
-  occur in envvar names will cause breakage. 
 
 ' "$PROGNAME"
     exit ${1:-1}
@@ -75,8 +75,24 @@ EXE="$2"
 [[ "${EXE##*/}" != "$EXE" || ! -f "$EXE" ]] || EXE="./$EXE"
 [[ -n "$(type -p "$EXE")" ]] || err_exit "not an executable: $EXE"
 
-# Count the number of lines (= array size)
-declare -ri N_LINES=$(mlr -t --ho --from "$TSV_FILE" --skip-comments skip-trivial-records then count)
+# Count the number of lines in TSV_FILE ex header (= array size)
+declare -ri N_LINES=$(($(grep -Ev '^[[:space:]]*(#|$)' "$TSV_FILE" | wc -l) - 1))
+((N_LINES >= 1)) || err_exit "no data lines in TSV file: $TSV_FILE"
+
+# Check TSV column header validity, and all rows have same number of columns
+OPT_ERR=$(grep -Ev '^[[:space:]]*(#|$)' "$TSV_FILE" | awk -F '\t' '
+    NR == 1 {
+      for (i=1; i<=NF; ++i) if ($i !~ /^[[:alnum:]_]+$/) {
+        print "invalid column header (must contain only letters, digits, underscores): " $i
+        exit
+      }
+      NCOL = NF
+    }
+    NF != NCOL {
+      print "invalid TSV file: record " (NR-1) " has " NF " columns, expected " NCOL
+      exit
+    }')
+[[ -z "$OPT_ERR" ]] || err_exit "$OPT_ERR"
 
 # Generate the batch job and pipe it into sbatch
 {
@@ -85,22 +101,20 @@ declare -ri N_LINES=$(mlr -t --ho --from "$TSV_FILE" --skip-comments skip-trivia
   # Copy the SBATCH directives from user's script
   grep -E '^#SBATCH ' "$EXE" 2>/dev/null || true
 
-  # When executed, the statement below generates and sources an export statement
-  # (export COL='val') for each column value in the N-th row, where N is the array
-  # task sequence number we receive from Slurm as $SLURM_ARRAY_TASK_ID.
-  # The Q gensub(Q,QQ,$i) Q means: quote value $i while double-quoting quotes inside
-  # the quoted value as '"'"' (see: https://stackoverflow.com/a/1250279/2109137).
+  # When executed, the statement below sources the generated list of variable exports,
+  # (export _NAME='val' ...), one for each column NAME for row R, where R is the index
+  # of this task in the array, as given by $SLURM_ARRAY_TASK_ID.
+  # The "Q gensub(Q,QQ,$i) Q" is there to quote $i while double-quoting its contents,
+  # substituting each ' by '"'"' (see: https://stackoverflow.com/a/1250279/2109137).
   cat <<'EOF'
-$(grep -Ev '^[[:space:]]*(#|$)' "$TSV_FILE" |
-  awk -v R=$((SLURM_ARRAY_TASK_ID + 1)) -v Q="'" -v QQ="'\"'\"'" '
-     NR==1 { for (i=1; i<=NF; ++i) H[i]=$i }
-     NR==R { for (i=1; i<=NF; ++i) print "export " H[i] "=" Q gensub(Q,QQ,"g",$i) Q }')
+. <(grep -Ev '^[[:space:]]*(#|$)' "$TSV_FILE" |
+    awk -F '\t' -v R=$((SLURM_ARRAY_TASK_ID + 1)) -v Q="'" -v QQ="'\"'\"'" '
+      NR==1 { for (i=1; i<=NF; ++i) H[i]=$i }
+      NR==R { for (i=1; i<=NF; ++i) print "export _" H[i] "=" Q gensub(Q,QQ,"g",$i) Q }')
 EOF
 
   # Generate the call
   printf 'exec %s\n' "$EXE"
 
 } | # Pipe into sbatch with user options and add array spec
-tee /tmp/tmp.job
-#    filter "NR == $SLURM_ARRAY_TASK_ID" then \
-#exec sbatch "${SBATCH_OPTS[@]}" --array 1-$N_LINES
+exec sbatch "${SBATCH_OPTS[@]}" --array 1-$N_LINES
