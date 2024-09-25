@@ -244,7 +244,8 @@ Finally, note that jobs could be made to support both modes: command
 line arguments and environment variables.  Examples are in the
 [job library](lib/jobs) (**WIP**).
 
-### Content of job library
+
+### Job library
 
 Currently in [lib/jobs](lib/jobs):
 
@@ -259,13 +260,17 @@ WIP:
    * [bap-nano.job](lib/jobs/skesa.job): run the BAP on Nanopore reads
    * [bap-illu.job](lib/jobs/skesa.job): run the BAP on Illumina reads
 
+In the examples below we assume the job library has been deployed at
+`/hpc/lib/jobs`, and that `sbatch-list` and `sbatch-tsv` scripts are on
+`PATH`.
+
 #### Example: fastp2 (PE reads)
 
 To run fastp on a collection of paired end reads, create a list file:
 
     fastp.list
     ---------------------------------------------------------------------
-    # Arguments as for fastp2.job (see fastp2.job --help)
+    # Arguments as for fastp2.job (see: /hpc/lib/jobs/fastp2.job --help)
     # FASTP_OPTIONS     READS1              READS2           OUTPREFIX
     -c -5 -3 -t 1 -l 64 /path/to/sam1_R1.fq /path/sam1_R2.fq outdir/iso1
     -c -5 -3 -t 1 -l 64 /path/to/sam2_R1.fq /path/sam2_R2.fq outdir/iso2
@@ -274,7 +279,7 @@ To run fastp on a collection of paired end reads, create a list file:
 
 Now submit the job with
 
-    sbatch-list fastq.list /hpc/jobs/fastp2.job
+    sbatch-list fastq.list /hpc/lib/jobs/fastp2.job
 
 
 ---
