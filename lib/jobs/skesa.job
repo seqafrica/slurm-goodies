@@ -40,7 +40,7 @@ err_exit() { echo "$PROGNAME: error: $*" >&2; exit 1; }
 usage_exit() { printf '
 Usage: %s [OPTIONS] FQ1 [FQ2 [FNA]]
 
-  Runs SKESA on reads files FQ1 and FQ2, producing assembly FNA.
+  Run SKESA on reads files FQ1 and FQ2, producing assembly FNA.
 
   If FQ2 is not given, interpolates its file name from FQ1 by replacing _R1
   by _R2 in {prefix}_R1{suffix}.  If FNA is not given, produces {prefix}.fna

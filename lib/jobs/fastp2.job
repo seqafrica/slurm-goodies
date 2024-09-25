@@ -1,0 +1,94 @@
+#!/bin/bash
+#
+#  fastp2.job - Bash script / Slurm job to run fastp on paired-end reads
+#  Copyright (C) 2024  Marco van Zwetselaar <io@zwets.it>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Home: https://github.com/seqafrica/slurm-goodies
+
+# Slurm defaults: job name, 1 task, 8 cores, 32G mem, 30mn max
+#SBATCH -J fastp2 -n 1 -c 12 --mem 8G -t 10
+
+# Hardened bash
+export LC_ALL="C"
+set -euo pipefail
+
+# Constants
+declare -r PROGNAME='fastp2.job'
+
+# fastp threads computed from actual Slurm allocation, or default if not under Slurm
+declare -ri FASTP_THREADS=${SLURM_JOB_CPUS_PER_NODE:-12}
+
+# Functions
+emit() { echo "$PROGNAME: $*" >&2; }
+err_exit() { echo "$PROGNAME: error: $*" >&2; exit 1; }
+
+# Function to exit with usage message
+usage_exit() { printf '
+Usage: %s [FASTP_OPTS] FQ1 FQ2 PFX
+
+  Run fastp on paired-end reads FQ1 FQ2, producing {PFX}_{R1,R2,UN}.fq.
+
+  Files {PFX}_R1.fq and {PFX}_R2.fq receive the paired trimmed reads.
+  File {PFX}_UN.fq receives the reads who lost their peer to trimming.
+
+  If {PFX} starts with a directory path, this will be created if needed.
+
+  FASTP_OPTS
+    -*,--*  Any options supported by fastp, except those specifying the
+            inputs, outputs and threads (as this script sets those)
+
+  Note: fastp gratuitously overwrites ./fastp.html and ./fastp.json on
+  every run, so this script overrides the -j and -h options to default
+  to {PFX}.fastp.json and {PFX}.fastp.html.
+
+' "$PROGNAME"
+  exit ${1:-1}
+}
+
+# Parse options
+declare -a FASTP_OPTS=()
+declare -i USER_JSON=0 USER_HTML=0
+while (($# > 3)); do
+    case "$1" in
+    -i|-o|-I|-O|--in1|--in2|--out1|--out2|--unpaired*|-w|--threads) usage_exit ;;
+    -j|--json) USER_JSON=1; FASTP_OPTS+=("$1") ;;
+    -h|--html) USER_HTML=1; FASTP_OPTS+=("$1") ;;
+    *)         FASTP_OPTS+=("$1") ;;
+    esac
+    shift
+done
+
+(($# == 3)) || usage_exit
+
+# Parse arguments
+FQ1="$1"
+FQ2="$2"
+PFX="$3"
+
+# Check files
+[[ -f "$FQ1" ]] || err_exit "no such file: $FQ1"
+[[ -f "$FQ2" ]] || err_exit "no such file: $FQ2"
+
+# Create PFX output dir if any
+OUT_DIR="${PFX%/*}"
+[[ "$OUT_DIR" == "$PFX" ]] || mkdir -p "$OUT_DIR"
+
+# Redirect fastp's html and json output unless user overrode them
+(( $USER_JSON )) || FASTP_OPTS+=("--json" "${PFX}.fastp.json")
+(( $USER_HTML )) || FASTP_OPTS+=("--html" "${PFX}.fastp.html")
+
+# Delegate to fastp
+exec fastp -w $FASTP_THREADS "${FASTP_OPTS[@]}" --in1 "$FQ1" --in2 "$FQ2" --out1 "${PFX}_R1.fq" --out2 "${PFX}_R2.fq" --unpaired1 "${PFX}_UN.fq"

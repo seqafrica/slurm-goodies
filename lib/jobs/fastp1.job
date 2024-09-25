@@ -1,0 +1,89 @@
+#!/bin/bash
+#
+#  fastp1.job - Bash script / Slurm job to run fastp on single reads
+#  Copyright (C) 2024  Marco van Zwetselaar <io@zwets.it>
+#
+#  This program is free software: you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation, either version 3 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Home: https://github.com/seqafrica/slurm-goodies
+
+# Slurm defaults: job name, 1 task, 8 cores, 32G mem, 30mn max
+#SBATCH -J fastp1 -n 1 -c 12 --mem 8G -t 10
+
+# Hardened bash
+export LC_ALL="C"
+set -euo pipefail
+
+# Constants
+declare -r PROGNAME='fastp1.job'
+
+# fastp threads computed from actual Slurm allocation, or default if not under Slurm
+declare -ri FASTP_THREADS=${SLURM_JOB_CPUS_PER_NODE:-12}
+
+# Functions
+emit() { echo "$PROGNAME: $*" >&2; }
+err_exit() { echo "$PROGNAME: error: $*" >&2; exit 1; }
+
+# Function to exit with usage message
+usage_exit() { printf '
+Usage: %s [FASTP_OPTS] FQIN FQOUT
+
+  Run fastp on single reads file FQIN, writing trimmed output to FQOUT.
+
+  If FQOUT starts with a directory path, this will be created if needed.
+
+  FASTP_OPTS
+   -*,--*  Any options supported by fastp, except those specifying the
+           input, output, and threads (as we set those in this script)
+
+  Note: fastp gratuitously overwrites ./fastp.html and ./fastp.json on
+  every run, so this script overrides the -j and -h options to default
+  to {FQOUT}.fastp.json and {FQOUT}.fastp.html.
+
+' "$PROGNAME"
+  exit ${1:-1}
+}
+
+# Parse options
+declare -a FASTP_OPTS=()
+declare -i USER_JSON=0 USER_HTML=0
+while (($# > 2)); do
+    case "$1" in
+    -i|-o|--in1|--out1|-w|--threads) usage_exit ;;
+    -j|--json) USER_JSON=1; FASTP_OPTS+=("$1") ;;
+    -h|--html) USER_HTML=1; FASTP_OPTS+=("$1") ;;
+    *)         FASTP_OPTS+=("$1") ;;
+    esac
+    shift
+done
+
+(($# == 2)) || usage_exit
+
+# Parse arguments
+FQIN="$1"
+FQOUT="$2"
+
+# Check files
+[[ -f "$FQIN" ]] || err_exit "no such file: $FQIN"
+
+# Create PFX output dir if any
+OUT_DIR="${FQOUT%/*}"
+[[ "$OUT_DIR" == "$FQOUT" ]] || mkdir -p "$OUT_DIR"
+
+# Redirect fastp's html and json output unless user overrode them
+(( $USER_JSON )) || FASTP_OPTS+=("--json" "${FQOUT}.fastp.json")
+(( $USER_HTML )) || FASTP_OPTS+=("--html" "${FQOUT}.fastp.html")
+
+# Delegate to fastp
+exec fastp -w $FASTP_THREADS "${FASTP_OPTS[@]}" --in1 "$FQIN" --out1 "$FQOUT"
