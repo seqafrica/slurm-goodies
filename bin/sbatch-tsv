@@ -46,7 +46,7 @@ Usage: %s [SBATCH_OPTS] TSV_FILE SCRIPT
   directives that may be set in SCRIPT.
 
   Lookup rules for SCRIPT are the same as for sbatch.  Notably: if SCRIPT
-  has no directory path, then it PWD is searched before PATH.
+  has no directory path, then PWD is searched before PATH.
 
 ' "$PROGNAME"
     exit ${1:-1}
